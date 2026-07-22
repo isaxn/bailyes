@@ -21,28 +21,6 @@ const button = require("@isaxn/bailyes");
 const { Bailyes, ButtonV2, Store } = button;
 ```
 
-## Struktur paket
-
-```
-src/
-  index.js                 entry point, export semua class
-  core/
-    baileys-loader.js      lazy-loader ESM Baileys (dipakai semua modul lain)
-    client.js               WAClient: koneksi, reconnect, QR/pairing code
-    store.js                 Store: memory kontak/chat/pesan
-    events.js                 event emitter kecil untuk Handler
-    handler.js                 router command & hear
-    context.js                  wrapper pesan masuk (ctx)
-  message/
-    index.js                 barrel export Button, ButtonV2, Carousel, AIRich, Toolkit, bind
-    base-builder.js           class dasar (title, body, footer, dst)
-    inline-entities.js         parser [text](url) untuk AIRich
-    tokenizer.js                syntax highlighter untuk AIRich.addCode
-    table.js                     helper tabel untuk AIRich.addTable
-    toolkit.js                    resize gambar, resolve media, preview video
-    native-flow.js                relay node "biz/interactive" (dipakai Button/ButtonV2/Carousel)
-    button.js, button-v2.js, carousel.js, ai-rich.js, link-preview.js
-```
 
 ## Quick start — bot sederhana
 

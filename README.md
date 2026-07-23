@@ -5,43 +5,21 @@ Framework WhatsApp bot berbasis [`@whiskeysockets/baileys`](https://github.com/W
 - Login QR **dan** pairing code
 - Auto-reconnect yang tidak kehilangan event setelah socket diganti
 - `Store` bawaan (kontak, chat, pesan, metadata grup) — pengganti `makeInMemoryStore` yang sudah dihapus dari Baileys
-- Message builder modular: `Button`, `ButtonV2`, `Carousel`, `AIRich`
+- Cara panggil simpel satu-fungsi lewat `bx` (`bx.button`, `bx.list`, `bx.card`, `bx.rich`, `bx.livePhoto`, `bx.liveThumbnail`, `bx.linkPreview`)
+- Builder chain klasik untuk kontrol detail: `Button`, `ButtonV2`, `Carousel`, `AIRich`
 - 100% bisa dipakai lewat `require(...)`, tidak perlu ESM
 
 ## Instalasi
 
 ```bash
-npm install @isaxn/bailyes
+npm install @isaxn/bailyes sharp
 ```
 
 Paket ini memuat `@whiskeysockets/baileys` secara dinamis di dalam (Baileys versi terbaru murni ESM), jadi kamu tetap bisa `require("@isaxn/bailyes")` seperti biasa walaupun dependensinya ESM.
 
 ```js
-const button = require("@isaxn/bailyes");
-const { Bailyes, ButtonV2, Store } = button;
-```
-
-## Struktur paket
-
-```
-src/
-  index.js                 entry point, export semua class
-  core/
-    baileys-loader.js      lazy-loader ESM Baileys (dipakai semua modul lain)
-    client.js               WAClient: koneksi, reconnect, QR/pairing code
-    store.js                 Store: memory kontak/chat/pesan
-    events.js                 event emitter kecil untuk Handler
-    handler.js                 router command & hear
-    context.js                  wrapper pesan masuk (ctx)
-  message/
-    index.js                 barrel export Button, ButtonV2, Carousel, AIRich, Toolkit, bind
-    base-builder.js           class dasar (title, body, footer, dst)
-    inline-entities.js         parser [text](url) untuk AIRich
-    tokenizer.js                syntax highlighter untuk AIRich.addCode
-    table.js                     helper tabel untuk AIRich.addTable
-    toolkit.js                    resize gambar, resolve media, preview video
-    native-flow.js                relay node "biz/interactive" (dipakai Button/ButtonV2/Carousel)
-    button.js, button-v2.js, carousel.js, ai-rich.js, link-preview.js
+const bailyes = require("@isaxn/bailyes");
+const { Bailyes, bx, Store } = bailyes;
 ```
 
 ## Quick start — bot sederhana
@@ -81,193 +59,159 @@ bot.onFramework("pairing-code", (code) => {
 bot.start();
 ```
 
-`phoneNumber` wajib diisi format internasional tanpa `+` atau spasi (`62...`). Kalau `pairingCode: true` tapi sesi sudah pernah login sebelumnya (`creds.registered`), kode tidak akan diminta lagi.
+## Referensi semua fungsi
 
-## Reconnect
-
-`WAClient` menyimpan status koneksi lewat `EventEmitter` sendiri (`open`, `close`, `qr`, `pairing-code`, `logged-out`, `error`), bukan langsung dari `sock.ev`. Jadi walaupun socket internal diganti saat reconnect, listener command/hear kamu **tidak hilang** — beda dari versi sebelumnya yang mendaftarkan `messages.upsert` langsung ke `sock.ev` sekali saja di awal.
-
-Reconnect otomatis dengan backoff (`reconnectDelay * attempt`, dibatasi `maxReconnectDelay`), berhenti otomatis kalau `DisconnectReason` adalah `loggedOut`.
+### `Bailyes` — class utama bot
 
 ```js
-const bot = new Bailyes({
-  reconnectDelay: 3000,
-  maxReconnectDelay: 30000,
-  maxReconnectAttempts: 0 // 0 = tidak dibatasi
-});
+new Bailyes(options)
 ```
 
-## Store — memory kontak, chat, dan pesan
+| Opsi | Default | Keterangan |
+|---|---|---|
+| `auth` | `"auth"` | folder penyimpanan sesi login |
+| `prefix` | `["!"]` | array prefix command |
+| `cooldown` | `0` | jeda antar pesan per-chat (ms), `0` = nonaktif |
+| `pairingCode` | `false` | pakai kode pairing, bukan QR |
+| `phoneNumber` | `null` | wajib diisi kalau `pairingCode: true` |
+| `store` | `{}` | opsi `Store`, atau `false` untuk matikan |
+| `reconnectDelay` | `3000` | delay dasar reconnect (ms) |
+| `maxReconnectDelay` | `30000` | batas atas delay reconnect (ms) |
+| `maxReconnectAttempts` | `0` | `0` = tidak dibatasi |
 
-Baileys versi baru tidak lagi menyediakan `makeInMemoryStore` bawaan, jadi harus dibuat manual. `Store` di paket ini otomatis mendengarkan event `contacts.*`, `chats.*`, `messages.*`, `groups.*`, `group-participants.update`.
+Method:
+
+- `bot.on(event, fn)` — dengarkan event mentah dari Baileys (`messages.upsert`, `chats.update`, dst)
+- `bot.onFramework(event, fn)` — dengarkan event framework: `ready`, `qr`, `pairing-code`, `close`, `logged-out`, `error`, `message`
+- `bot.command(name | [names], fn)` — daftarkan command
+- `bot.hear(stringOrRegex, fn)` — respons tanpa prefix
+- `bot.start()` — mulai koneksi, return `sock`
+- `bot.stop()` — putus koneksi & hentikan autosave `Store`
+- `bot.store` — getter ke instance `Store` yang aktif
+- `bot.sock` — instance socket Baileys aktif setelah `ready`
+
+### `bx` — pemanggilan cepat satu fungsi
+
+- `bx.button(sock, jid, { title, body, footer, thumbnail, buttons: [{ text, id }], contextInfo, options })`
+- `bx.list(sock, jid, { title, body, footer, sections: [{ title, highlight, rows: [{ header, title, description, id }] }], contextInfo, options })`
+- `bx.card(sock, jid, { body, footer, cards: [{ title, subtitle, body, footer, image, video, buttons: [{ type: "url"|"call"|"copy"|"reply", text, value }] }], contextInfo, options })`
+- `bx.rich(sock, jid, { title, text, code: { language, content }, table, tip, options })`
+- `bx.linkPreview(sock, jid, { text, link, title, description, thumbnail, options })`
+- `bx.livePhoto(sock, jid, { image, video, options })` — kirim gambar yang otomatis "hidup" jadi video singkat saat ditekan, mirip Live Photo di iPhone
+- `bx.liveThumbnail(sock, jid, { key, text, link, title, description, images: [...], size, interval, loops, quality })` — edit pesan berulang dengan thumbnail link-preview yang berganti-ganti
+
+### `Button` — interactiveMessage / native flow list
 
 ```js
-const { Store } = require("@isaxn/bailyes");
-
-const store = new Store({
-  file: "store.json",       // opsional: simpan/baca otomatis dari file
-  autosaveInterval: 15000,  // interval autosave (ms)
-  maxMessagesPerChat: 200   // batas pesan yang disimpan per chat
-});
+new Button(sock)
+  .setTitle(title) .setSubtitle(subtitle) .setBody(body) .setFooter(footer) .setContextInfo(obj)
+  .setImage(url|buffer, opts) .setVideo(url|buffer, opts) .setDocument(url|buffer, opts) .setMedia(obj)
+  .addSelection(title, opts) .makeSection(title, highlightLabel) .makeRow(header, title, description, id)
+  .addReply(text, id, opts) .addCall(text, id, opts) .addUrl(text, url, webview, opts) .addCopy(text, code, opts)
+  .addReminder(text, id, opts) .addCancelReminder(text, id, opts) .addAddress(text, id, opts) .addLocation(opts)
+  .addButton(name, params) .clearButtons() .setParams(obj)
+  .toCard()
+  .build(jid, opts)
+  .send(jid, opts)
 ```
 
-Dipakai lewat opsi `store` saat membuat `Bailyes`/`WAClient` (otomatis dibind ke `sock.ev`):
+### `ButtonV2` — buttonsMessage
 
 ```js
-const bot = new Bailyes({
-  store: { file: "store.json", autosaveInterval: 15000 }
-});
+new ButtonV2(sock)
+  .setBody(body) .setFooter(footer) .setContextInfo(obj)
+  .setThumbnail(url|buffer) .setMedia(obj)
+  .addButton(displayText, buttonId?) .addRawButton(obj)
+  .build(jid, opts)
+  .send(jid, opts)
 ```
 
-Atau matikan store sama sekali dengan `store: false`.
+`send()` wajib minimal satu `.addButton()`, kalau tidak melempar `Error`.
 
-API `Store`:
+### `Carousel`
 
+```js
+new Carousel(sock)
+  .setBody(body) .setFooter(footer) .setContextInfo(obj)
+  .addCard(cardOrArrayOfCards)
+  .build(jid, opts)
+  .send(jid, opts)
+```
+
+Tiap card didapat dari `Button().toCard()`.
+
+### `AIRich` — rich response ala AI
+
+```js
+new AIRich(sock)
+  .setTitle(title) .setBody(body) .setFooter(footer) .setContextInfo(obj)
+  .addText(text, opts) .addCode(language, code) .addTable(rows2D, opts)
+  .addSource([[icon, url, text], ...]) .addReels(item|items) .addImage(url|buffer|array, opts)
+  .addVideo(url|buffer|object|array, opts) .addProduct(item|items) .addPost(item|items)
+  .addTip(text) .addSuggest(text|array, opts)
+  .addSubmessage(obj) .addSection(obj)
+  .build(opts)
+  .send(jid, opts)
+```
+
+### `Toolkit` — util media (static, tidak perlu instance)
+
+- `Toolkit.extractIE(text, opts)` — parser `[teks](url)` untuk tautan/sitasi/latex
+- `Toolkit.waitAllPromises(input)` — resolve semua Promise bersarang di dalam objek/array
+- `Toolkit.resize(buffer, x, y, fit?)` — resize gambar pakai `sharp`
+- `Toolkit.fetchBuffer(url, fetchOpts?, { silent })` — unduh jadi `Buffer`
+- `Toolkit.toUrl(sock, buffer|url, mediaType)` — upload ke server WA, hasil URL
+- `Toolkit.resolveMedia(sock, media, mediaType, opts)` — serba-bisa: url/buffer/base64 -> url/buffer/base64
+- `Toolkit.getMp4Duration(buffer, { silent })` — durasi video dari buffer mp4
+- `Toolkit.getMp4Preview(buffer, { time, result, resize, width, height, silent })` — screenshot frame video jadi gambar
+
+### `Store` — memory kontak, chat, pesan
+
+```js
+new Store({ file, autosaveInterval, maxMessagesPerChat })
+```
+
+- `store.bind(ev)` — dipanggil otomatis oleh `WAClient`/`Bailyes`
 - `store.getName(jid)` — nama kontak (fallback ke nomor)
-- `store.getContact(jid)`, `store.getChat(jid)`, `store.getGroupMetadata(jid)`
+- `store.getContact(jid)` / `store.getChat(jid)` / `store.getGroupMetadata(jid)`
 - `store.loadMessage(jid, id)` — ambil pesan lama dari memory (berguna untuk quoted/anti-delete)
-- `store.writeToFile(path)` / `store.readFromFile(path)` — simpan/baca manual
+- `store.upsertContact(obj)` / `store.upsertChat(obj)` / `store.upsertMessage(msg)` / `store.upsertGroupMetadata(obj)`
 - `store.toJSON()` / `store.fromJSON(data)`
+- `store.writeToFile(path?)` / `store.readFromFile(path?)`
+- `store.stop()` — hentikan autosave
 
-Di dalam `ctx` (Context pesan masuk), tinggal panggil `ctx.getName()` — otomatis pakai store yang sama.
+### `Context` (`ctx`) — wrapper pesan masuk di dalam `bot.command()`/`bot.hear()`
 
-## Message builder
+Properti: `ctx.sock`, `ctx.msg`, `ctx.chat`, `ctx.sender`, `ctx.isGroup`, `ctx.isLid`, `ctx.fromMe`, `ctx.text`, `ctx.command`, `ctx.args`, `ctx.isImage`, `ctx.isVideo`, `ctx.isAudio`, `ctx.isSticker`, `ctx.isDocument`, `ctx.isVN`
 
-### ButtonV2 (buttonsMessage)
+Method:
 
-```js
-const { ButtonV2 } = require("@isaxn/bailyes");
+- `ctx.getName(jid?)` — nama kontak lewat `Store`
+- `ctx.getProfilePicture(jid?)` — url foto profil, `null` kalau gagal (termasuk `@lid`)
+- `ctx.downloadMedia(folder?)` — unduh media pesan masuk ke disk
+- `ctx.reply(text, opts?)` — balas teks
+- `ctx.replyButtons(text, buttons, footer?, opts?)` — balas dengan buttonsMessage cepat
+- `ctx.react(emoji)` — kirim reaksi ke pesan
 
-const msg = new ButtonV2(sock)
-  .setBody("Pilih salah satu")
-  .setFooter("Bailyes Bot")
-  .addButton("Menu 1", "menu1")
-  .addButton("Menu 2", "menu2");
-
-await msg.send(jid, { quoted: ctx.msg });
-```
-
-`ButtonV2` **wajib** minimal satu `.addButton()` sebelum `.send()` — kalau tidak, akan langsung melempar `Error`, bukan diam-diam fallback jadi teks biasa seperti sebelumnya.
-
-### Button (interactiveMessage / native flow list)
+### `WAClient` — koneksi tingkat rendah (dipakai `Bailyes` di dalam)
 
 ```js
-const { Button } = require("@isaxn/bailyes");
-
-const msg = new Button(sock)
-  .setTitle("Judul")
-  .setBody("Isi pesan")
-  .addSelection("Pilih menu")
-  .makeSection("Kategori A")
-  .makeRow("", "Item 1", "Deskripsi item 1", "item1")
-  .makeRow("", "Item 2", "Deskripsi item 2", "item2");
-
-await msg.send(jid);
+new WAClient(options)
+  .connect()
+  .stop()
 ```
 
-### Carousel
+Event: `open`, `close`, `qr`, `pairing-code`, `logged-out`, `error`, plus semua event Baileys asli (`messages.upsert`, `chats.update`, dst) diteruskan langsung.
 
-```js
-const { Carousel, Button } = require("@isaxn/bailyes");
+### `Handler` / `Events` — dipakai internal oleh `Bailyes`
 
-const card1 = await new Button(sock).setImage("https://...").setTitle("Kartu 1").toCard();
-const card2 = await new Button(sock).setImage("https://...").setTitle("Kartu 2").toCard();
+- `new Handler(prefix)` — `.command(name, fn)`, `.hear(pattern, fn)`, `.handle(ctx)`
+- `new Events()` — `.on(event, fn)`, `.off(event, fn)`, `.emit(event, data)`
 
-const carousel = new Carousel(sock).setBody("Lihat pilihan berikut").addCard([card1, card2]);
+### `bind(sock)` / `sendLinkPreview`
 
-await carousel.send(jid);
-```
-
-### AIRich (rich response ala AI)
-
-```js
-const { AIRich } = require("@isaxn/bailyes");
-
-const rich = new AIRich(sock)
-  .setTitle("Asisten")
-  .addText("Ini contoh **teks** dengan [tautan](https://example.com)")
-  .addCode("javascript", "console.log('halo')")
-  .addTip("Ketik !menu untuk melihat semua perintah");
-
-await rich.send(jid);
-```
-
-### Toolkit
-
-Kumpulan util murni tanpa perlu instance socket kecuali fungsi yang upload media (`toUrl`, `resolveMedia`):
-
-```js
-const { Toolkit } = require("@isaxn/bailyes");
-
-const buffer = await Toolkit.fetchBuffer("https://example.com/gambar.jpg");
-const resized = await Toolkit.resize(buffer, 300, 300);
-```
-
-## v2.1.0 — cara panggil baru: `bx`
-
-Selain builder chain (`new ButtonV2(sock).setBody(...).addButton(...)`), sekarang ada `bx` — satu fungsi sekali panggil, tanpa chaining, untuk kasus-kasus umum:
-
-```js
-const { bx } = require("@isaxn/bailyes");
-
-await bx.button(sock, jid, {
-  body: "Pilih menu",
-  footer: "Bailyes Bot",
-  buttons: [
-    { text: "Menu 1", id: "menu1" },
-    { text: "Menu 2", id: "menu2" }
-  ]
-});
-
-await bx.list(sock, jid, {
-  title: "Daftar Produk",
-  sections: [
-    { title: "Kategori A", rows: [{ title: "Item 1", description: "Deskripsi", id: "item1" }] }
-  ]
-});
-
-await bx.card(sock, jid, {
-  body: "Lihat produk kami",
-  cards: [
-    { title: "Produk 1", image: "https://...", buttons: [{ type: "url", text: "Beli", value: "https://..." }] },
-    { title: "Produk 2", image: "https://...", buttons: [{ type: "reply", text: "Tanya", value: "tanya1" }] }
-  ]
-});
-
-await bx.rich(sock, jid, { title: "Asisten", text: "Halo!", tip: "Ketik !menu" });
-
-await bx.linkPreview(sock, jid, { text: "Cek ini", link: "https://example.com", title: "Judul", description: "Deskripsi" });
-```
-
-### `bx.livePhoto` — kirim foto + video terpasang jadi satu (Live Photo)
-
-Fitur baru: kirim gambar yang otomatis "hidup" jadi video singkat saat ditekan, mirip Live Photo di iPhone. Ini memakai `messageAssociation` bawaan WhatsApp (video di-relay terpisah tapi terikat ke `parentMessageKey` pesan gambar).
-
-```js
-await bx.livePhoto(sock, jid, {
-  image: "https://example.com/foto.jpg",   // url, path lokal, atau Buffer
-  video: "https://example.com/klip.mp4"    // url, path lokal, atau Buffer
-});
-```
-
-### `bx.liveThumbnail` — animasi thumbnail link preview
-
-Edit pesan berulang kali dengan thumbnail link-preview yang berganti-ganti, jadi efek "gambar bergerak" di dalam satu bubble teks/link.
-
-```js
-const { key } = await sock.sendMessage(jid, { text: "Menyiapkan..." });
-
-await bx.liveThumbnail(sock, jid, {
-  key,
-  text: "Cek promo ini",
-  link: "https://example.com/promo",
-  title: "Promo",
-  description: "Terbatas hari ini",
-  images: ["https://.../1.jpg", "https://.../2.jpg", "https://.../3.jpg"],
-  interval: 1500,
-  loops: 2
-});
-```
+- `bind(sock)` — tempel `sock.sendLinkPreview(jid, text, link, title, description, thumbnail, opts)`, otomatis dipanggil `Bailyes.start()`
+- `sendLinkPreview(sock, jid, { text, link, title, description, thumbnail, options })` — versi fungsi berdiri sendiri, dipakai juga oleh `bx.linkPreview`
 
 ## Perbaikan dari versi sebelumnya
 
@@ -275,28 +219,28 @@ await bx.liveThumbnail(sock, jid, {
 - **Pairing code** ditambahkan (`pairingCode: true` + `phoneNumber`), sebelumnya hanya QR.
 - **Reconnect tidak lagi memutus listener command** — sebelumnya `sock.ev.on("messages.upsert", ...)` didaftarkan sekali di `start()`, jadi setelah reconnect (socket baru), listener lama menunjuk ke socket basi. Sekarang event diteruskan lewat `WAClient` (EventEmitter sendiri) yang stabil lintas reconnect.
 - **`ButtonV2` tanpa `.addButton()` sekarang melempar error jelas**, bukan diam-diam fallback jadi pesan teks biasa.
-- **Store/memory kontak dibuat manual** (`src/core/store.js`) karena Baileys tidak lagi menyediakan `makeInMemoryStore` bawaan.
+- **`ButtonV2` tidak lagi maksa header jadi `locationMessage` palsu** (lat/long 0,0) kalau tidak diset thumbnail — default sekarang header teks biasa.
+- **Store/memory kontak dibuat manual** (`Store`) karena Baileys tidak lagi menyediakan `makeInMemoryStore` bawaan.
 - **`@lid` dan JID lain yang gagal diambil foto profilnya** tidak lagi melempar exception — `ctx.getProfilePicture()` mengembalikan `null` dengan aman lewat try/catch.
 - **`@whiskeysockets/baileys` dinaikkan ke `^6.7.23`** (versi `6.7.9` yang dipakai sebelumnya kena advisory keamanan spoofing pesan).
-- File tunggal 2600+ baris (`build-message.js`) dipecah jadi modul-modul kecil per tanggung jawab (`toolkit`, `base-builder`, `button`, `button-v2`, `carousel`, `ai-rich`, `tokenizer`, `table`, `inline-entities`, `native-flow`, `link-preview`) supaya gampang di-maintain dan tidak saling tabrak saat diedit.
+- File tunggal 2600+ baris dipecah jadi modul-modul kecil per tanggung jawab supaya gampang di-maintain dan tidak saling tabrak saat diedit.
+- Ditambahkan `bx` — cara panggil satu fungsi tanpa perlu chaining `.addButton()` dkk, plus fitur baru `bx.livePhoto` dan `bx.liveThumbnail`.
 
 ## Saran update selanjutnya
 
-- **Plugin loader otomatis** — folder `plugins/` di-scan, tiap file otomatis jadi command (mirip pola yang sudah kamu pakai di bot lamamu), supaya `bot.command()` tidak ditulis manual satu-satu.
-- **Anti-delete berbasis `Store`** — karena `store.loadMessage(jid, id)` sudah ada, tinggal dengarkan event `messages.delete` dan kirim ulang isi pesan lama sebelum dihapus.
-- **Rate limiter per-command** — `cooldown` sekarang masih per-chat global; bisa dibuat per-command per-user biar lebih presisi (misal command berat dibatasi lebih ketat dari command ringan).
-- **Poll message builder** — builder khusus untuk `pollCreationMessage`, senada gaya `bx` (`bx.poll(sock, jid, { question, options })`).
-- **Session multi-akun** — satu proses Node bisa jalankan banyak `Bailyes` instance sekaligus (multi-nomor), tinggal kasih `auth` folder beda-beda; bisa dibungkus jadi `SessionManager` biar gampang.
-- **Backend `Store` opsional ke SQLite** — saat ini `Store` murni in-memory + file JSON; untuk bot dengan banyak chat/pesan, opsi simpan ke SQLite (`better-sqlite3`) bakal lebih tahan crash dan tidak makan RAM.
-- **Webhook/HTTP bridge** — endpoint HTTP kecil biar bot bisa dikontrol dari luar (kirim pesan lewat API, cek status koneksi, dsb), cocok buat kamu yang juga suka bikin REST API (NexRay API).
+- **Plugin loader otomatis** — folder `plugins/` di-scan, tiap file otomatis jadi command.
+- **Anti-delete berbasis `Store`** — dengarkan `messages.delete`, kirim ulang isi pesan lama pakai `store.loadMessage()`.
+- **Rate limiter per-command** — `cooldown` sekarang masih per-chat global, bisa dibuat per-command per-user.
+- **Poll message builder** — `bx.poll(sock, jid, { question, options })`.
+- **Session multi-akun** — `SessionManager` untuk jalankan banyak `Bailyes` instance sekaligus (multi-nomor).
+- **Backend `Store` opsional ke SQLite** — biar tidak makan RAM untuk bot dengan banyak chat/pesan.
+- **Webhook/HTTP bridge** — endpoint HTTP kecil biar bot bisa dikontrol dari luar.
 
 ## Testing
 
 ```bash
 npm test
 ```
-
-`test/basic.test.js` menguji Handler, Store, Toolkit, dan proses `build()` dari `ButtonV2`/`AIRich` tanpa perlu koneksi WhatsApp asli.
 
 ## Lisensi
 

@@ -1,13 +1,20 @@
+<!--
+@author : isank dev
+@linkch : https://whatsapp.com/channel/0029Vb8Fj4S1iUxiJPyKFh1U
+@note : informasi update nya lewat ch
+@tanggal : now
+-->
+
 # @isaxn/bailyes
 
-Framework WhatsApp bot berbasis [`@whiskeysockets/baileys`](https://github.com/WhiskeySockets/Baileys), dengan:
+Framework WhatsApp bot berbasis [`@whiskeysockets/baileys`](https://github.com/WhiskeySockets/Baileys), dibikin sama [isaxn](https://whatsapp.com/channel/0029Vb8Fj4S1iUxiJPyKFh1U) buat gampangin bikin bot tanpa ribet mikirin native flow / interactive message manual.
 
 - Login QR **dan** pairing code
 - Auto-reconnect yang tidak kehilangan event setelah socket diganti
 - `Store` bawaan (kontak, chat, pesan, metadata grup) — pengganti `makeInMemoryStore` yang sudah dihapus dari Baileys
-- Cara panggil simpel satu-fungsi lewat `bx` (`bx.button`, `bx.list`, `bx.card`, `bx.rich`, `bx.livePhoto`, `bx.liveThumbnail`, `bx.linkPreview`)
-- Builder chain klasik untuk kontrol detail: `Button`, `ButtonV2`, `Carousel`, `AIRich`
-- 100% bisa dipakai lewat `require(...)`, tidak perlu ESM
+- **`bx`** — cara panggil pesan interaktif satu fungsi, tanpa perlu chaining `.addButton()` berkali-kali
+- Builder chain klasik (`Button`, `ButtonV2`, `Carousel`, `AIRich`) buat yang mau kontrol lebih detail
+- 100% bisa dipakai lewat `require(...)`, tidak perlu ESM walaupun Baileys terbaru full ESM
 
 ## Instalasi
 
@@ -15,14 +22,44 @@ Framework WhatsApp bot berbasis [`@whiskeysockets/baileys`](https://github.com/W
 npm install @isaxn/bailyes sharp
 ```
 
-Paket ini memuat `@whiskeysockets/baileys` secara dinamis di dalam (Baileys versi terbaru murni ESM), jadi kamu tetap bisa `require("@isaxn/bailyes")` seperti biasa walaupun dependensinya ESM.
-
 ```js
 const bailyes = require("@isaxn/bailyes");
 const { Bailyes, bx, Store } = bailyes;
 ```
 
-## Quick start — bot sederhana
+## Kenalan sama `bx` dulu
+
+Ini yang bikin `@isaxn/bailyes` beda dari fork Baileys lain: kirim button, list, carousel, sampai "live photo" cukup satu pemanggilan fungsi — nggak perlu bikin instance builder terus di-chaining panjang-panjang.
+
+```js
+const { Bailyes, bx } = require("@isaxn/bailyes");
+
+const bot = new Bailyes({ auth: "auth", prefix: ["!"] });
+
+bot.command("menu", async (ctx) => {
+  await bx.button(ctx.sock, ctx.chat, {
+    body: "Pilih menu di bawah ini",
+    footer: "Powered by @isaxn/bailyes",
+    buttons: [
+      { text: "Ping", id: "menu_ping" },
+      { text: "Profil", id: "menu_profil" }
+    ]
+  });
+});
+
+bot.command("live", async (ctx) => {
+  await bx.livePhoto(ctx.sock, ctx.chat, {
+    image: "https://example.com/foto.jpg",
+    video: "https://example.com/klip.mp4"
+  });
+});
+
+bot.start();
+```
+
+Satu baris `bx.xxx(sock, jid, opsi)`, selesai. Kalau nanti butuh kontrol lebih detail (bikin section/row satu-satu secara dinamis, dsb), builder chain klasik (`Button`, `ButtonV2`, dst) masih tersedia — lihat bagian referensi di bawah.
+
+## Quick start — bot sederhana (tanpa `bx`, cara klasik)
 
 ```js
 const { Bailyes } = require("@isaxn/bailyes");
@@ -99,6 +136,42 @@ Method:
 - `bx.linkPreview(sock, jid, { text, link, title, description, thumbnail, options })`
 - `bx.livePhoto(sock, jid, { image, video, options })` — kirim gambar yang otomatis "hidup" jadi video singkat saat ditekan, mirip Live Photo di iPhone
 - `bx.liveThumbnail(sock, jid, { key, text, link, title, description, images: [...], size, interval, loops, quality })` — edit pesan berulang dengan thumbnail link-preview yang berganti-ganti
+
+Contoh lengkap tiap fungsi `bx`:
+
+```js
+await bx.list(sock, jid, {
+  title: "Daftar Produk",
+  sections: [
+    { title: "Kategori A", rows: [{ title: "Item 1", description: "Deskripsi", id: "item1" }] }
+  ]
+});
+
+await bx.card(sock, jid, {
+  body: "Lihat produk kami",
+  cards: [
+    { title: "Produk 1", image: "https://...", buttons: [{ type: "url", text: "Beli", value: "https://..." }] },
+    { title: "Produk 2", image: "https://...", buttons: [{ type: "reply", text: "Tanya", value: "tanya1" }] }
+  ]
+});
+
+await bx.rich(sock, jid, { title: "Asisten", text: "Halo!", tip: "Ketik !menu" });
+
+await bx.linkPreview(sock, jid, { text: "Cek ini", link: "https://example.com", title: "Judul", description: "Deskripsi" });
+
+const { key } = await sock.sendMessage(jid, { text: "Menyiapkan..." });
+
+await bx.liveThumbnail(sock, jid, {
+  key,
+  text: "Cek promo ini",
+  link: "https://example.com/promo",
+  title: "Promo",
+  description: "Terbatas hari ini",
+  images: ["https://.../1.jpg", "https://.../2.jpg", "https://.../3.jpg"],
+  interval: 1500,
+  loops: 2
+});
+```
 
 ### `Button` — interactiveMessage / native flow list
 
